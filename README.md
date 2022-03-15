@@ -1,36 +1,29 @@
-Proposed API:
-$ nb note emails.unread 132
-stream emails.unread does not exist.
+API implementation checklist:
+[x] $ nb stream modify emails.unread --name "unread emails"
+modified the stream named unread emails.
 
-$ nb stream add emails.unread number
-created a stream of numbers named emails.unread.
-
-$ nb stream add emails.unread number
-did not create stream; a stream with id emails.unread already exists
-
-$ nb stream modify emails.unread --name "unread emails"
-modified the stream of numbers named unread emails.
-
-$ nb stream list
+[ ] $ nb stream list
 emails
   .unread ("unread emails") number
 
-$ nb note emails.unread 132
+[x] $ nb note emails.unread 132
 noted 132 emails.unread.
 
-$ nb note emails.unread asdf
-could not note, asdf is not a number.
-
-$ nb denote emails.unread
+[x] $ nb denote emails.unread
 removed latest note (132 at timestamp).
 
-$ nb note emails.unread 132 --timestamp timestamp
+[x] $ nb denote emails.unread 100
+removed note 100 (129 at index 100).
+
+[x] $ nb note emails.unread 132 --timestamp timestamp
 noted 132 at timestamp.
 
-$ nb stream show emails.unread --format table
+[x] $ nb stream show emails.unread --format csv
 
-$ nb stream show emails.unread --format graph
+[ ] $ nb stream show emails.unread --format table
 
-$ nb stream show emails.unread --format json
+[ ] $ nb stream show emails.unread --format graph
 
-$ nb stream show emails.unread --format timeline
+[ ] $ nb stream show emails.unread --format json
+
+[ ] $ nb stream show emails.unread --format timeline

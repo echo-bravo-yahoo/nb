@@ -34,16 +34,24 @@ yargs(hideBin(process.argv))
       return yargs
         .positional('stream', { describe: 'the id of the stream to write to', type: 'string' })
         .positional('value', { describe: 'the value to remember' })
+        .option('timestamp', { alias: 'ts' })
     },
     handler: args => {
       let stream = db.get(args.stream)
       if (stream === undefined) stream = { id: args.stream, ...defaultStream }
-      db.put(args.stream, { ...stream, values: [...stream.values, [ Date.now(), args.value ]] })
-      console.log(`noted ${args.value} in stream ${formatStreamName(stream)}.`)
+
+      if (args.timestamp) {
+        let values = [...stream.values, [ args.timestamp, args.value ]].sort((a, b) => a[0] - b[0])
+        db.put(args.stream, { ...stream, values })
+        console.log(`noted ${args.value} in stream ${formatStreamName(stream)} at time ${args.timestamp}.`)
+      } else {
+        db.put(args.stream, { ...stream, values: [...stream.values, [ Date.now(), args.value ]] })
+        console.log(`noted ${args.value} in stream ${formatStreamName(stream)}.`)
+      }
     }
   })
   .command({
-    command: 'denote <stream> <note>',
+    command: 'denote <stream> [note]',
     description: 'delete a memory not worthy of rememberance',
     builder: yargs => {
     },
@@ -51,13 +59,24 @@ yargs(hideBin(process.argv))
       let stream = db.get(args.stream)
       if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
       let values = [...stream.values]
-      if (indexOrNot(args.note)) {
+
+      if (args.note === undefined) {
+        // no note specified? delete the newest
+        values.splice(values.length - 1, 1)
+      } else if (indexOrNot(args.note)) {
+        // note is small? delete the one at that index
         values.splice(args.note, 1)
       } else {
+        // note is big? delete the one with that timestamp
         values = values.filter((value) => value[0] !== args.note)
       }
+
       db.put(args.stream, { ...stream, values })
-      console.log(`deleted note ${args.note} in stream ${formatStreamName(stream)}.`)
+      if (args.note === undefined) {
+        console.log(`deleted latest note ${values.length} in stream ${formatStreamName(stream)}.`)
+      } else {
+        console.log(`deleted note ${args.note} in stream ${formatStreamName(stream)}.`)
+      }
     }
   })
   .command({
@@ -71,10 +90,12 @@ yargs(hideBin(process.argv))
           builder: yargs => {
             return yargs
               .positional('stream', { describe: 'the id of the stream you wish to recall', type: 'string' })
+              .option('format', { describe: 'the format of the output', choices: ['csv', 'table', 'graph', 'json', 'timeline'], default: 'csv' })
           },
           handler: args => {
             const stream = db.get(args.stream)
             if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
+            if (args.format !== 'csv') throw Error(`format ${args.format} not implemented yet.`)
             for(let i = 0; i < stream.values.length; i++) {
               console.log(`${i}, ${stream.values[i][0]}, ${stream.values[i][1]}`)
             }
