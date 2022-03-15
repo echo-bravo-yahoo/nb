@@ -1,0 +1,15 @@
+{
+  "name": "nb",
+  "version": "1.0.0",
+  "description": "nota bene: a tool for recording trends",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "flat-file-db": "^1.0.0",
+    "yargs": "^17.3.1"
+  }
+}
