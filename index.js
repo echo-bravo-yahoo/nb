@@ -54,6 +54,7 @@ yargs(hideBin(process.argv))
     command: 'denote <stream> [note]',
     description: 'delete a memory not worthy of rememberance',
     builder: yargs => {
+      return yargs
     },
     handler: args => {
       let stream = db.get(args.stream)
@@ -84,6 +85,36 @@ yargs(hideBin(process.argv))
     description: 'manage streams of memory',
     builder: yargs => {
       return yargs
+        .command({
+          command: 'list',
+          description: 'list streams',
+          builder: yargs => {
+            return yargs
+          },
+          handler: args => {
+            const streams = db.keys()
+            console.log(streams.map((key) => `${key} (${db.get(key).values.length})`).join('\n'))
+          }
+        })
+        .command({
+          command: 'merge <from> <to>',
+          description: 'merge two streams together, deleting the "from" stream. if the "to" stream does not exist, this will effectively rename "from". no attempt will be made to dedupe entries.',
+          builder: yargs => {
+            return yargs
+          },
+          handler: args => {
+            if (!db.has(args.from)) throw new Error(`stream ${args.from} does not exist. specify a different "from" stream.`)
+            const from = db.get(args.from)
+            const to = db.get(args.to)
+
+            // could be time optimized to avoid the sort
+            let result = from.values.concat(to.values)
+            result = result.sort((a, b) => a[0] - b[0])
+            db.put(args.to, { ...to, values: result })
+            db.del(args.from)
+            console.log(`merged stream ${args.from} into stream ${args.to}.`)
+          }
+        })
         .command({
           command: 'show <stream>',
           description: 'display memories',
