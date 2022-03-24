@@ -9,6 +9,9 @@ emails
 [x] $ nb note emails.unread 132
 noted 132 emails.unread.
 
+[ ] $ nb correct emails.unread 0 133
+corrected note 0 from 132 to 133.
+
 [x] $ nb denote emails.unread
 removed latest note (132 at timestamp).
 
