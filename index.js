@@ -51,7 +51,7 @@ yargs(hideBin(process.argv))
     }
   })
   .command({
-    command: 'denote <stream> [note]',
+    command: 'denote <stream> [index]',
     description: 'delete a memory not worthy of rememberance',
     builder: yargs => {
       return yargs
@@ -77,6 +77,47 @@ yargs(hideBin(process.argv))
         console.log(`deleted latest note ${values.length} in stream ${formatStreamName(stream)}.`)
       } else {
         console.log(`deleted note ${args.note} in stream ${formatStreamName(stream)}.`)
+      }
+    }
+  })
+  .command({
+    command: 'correct <stream> [index] [note]',
+    description: 'correct a memory',
+    builder: yargs => {
+      return yargs
+        .positional('stream', { describe: 'the stream containing the memory to replace' })
+        .positional('index', { describe: 'the memory to replace; reference it by its timestamp or index. if not specified, the newest note will be corrected' })
+        .option('note', { describe: 'the new note value' })
+    },
+    handler: args => {
+      let stream = db.get(args.stream)
+      if (stream === undefined)
+        throw Error(`stream ${args.stream} does not exist.`)
+
+      let values = [...stream.values]
+      let correctionIndex
+      if (args.index !== undefined) {
+        for (let i = 0; i < values.length; i++) {
+          if (values[i][0] === args.index || i === args.index) {
+            correctionIndex = i
+            break
+          }
+        }
+      } else {
+        correctionIndex = values.length - 1
+      }
+
+      if (correctionIndex === undefined)
+        throw Error(`stream does not contain memory with index ${index}`)
+
+      const newValues = values
+      newValues[correctionIndex] = [values[correctionIndex][0], args.note]
+
+      db.put(args.stream, { ...stream, values: newValues })
+      if (args.index === undefined) {
+        console.log(`corrected latest note ${values.length} in stream ${formatStreamName(stream)}.`)
+      } else {
+        console.log(`corrected note ${args.index} in stream ${formatStreamName(stream)}.`)
       }
     }
   })
