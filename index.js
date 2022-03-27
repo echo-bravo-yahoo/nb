@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+import sparkly from 'sparkly';
 
-const flatfile = require('flat-file-db')
+import flatfile from 'flat-file-db'
 const db = flatfile.sync('./database.db')
 
-const yargs = require('yargs/yargs')
-const { hideBin } = require('yargs/helpers')
+import yargs from 'yargs'
+import { hideBin } from 'yargs/helpers'
 
 const defaultStream = {
   values: []
@@ -167,9 +168,15 @@ yargs(hideBin(process.argv))
           handler: args => {
             const stream = db.get(args.stream)
             if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
-            if (args.format !== 'csv') throw Error(`format ${args.format} not implemented yet.`)
-            for(let i = 0; i < stream.values.length; i++) {
-              console.log(`${i}, ${stream.values[i][0]}, ${stream.values[i][1]}`)
+
+            if (args.format === 'csv') {
+              for(let i = 0; i < stream.values.length; i++) {
+                console.log(`${i}, ${stream.values[i][0]}, ${stream.values[i][1]}`)
+              }
+            } else if (args.format === 'graph') {
+              console.log(sparkly(stream.values.map((value) => value[1]), { minimum: 0 }))
+            } else {
+              throw Error(`format ${args.format} not implemented yet.`)
             }
           }
         })

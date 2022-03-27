@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "nota bene: a tool for recording trends",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -13,6 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "flat-file-db": "^1.0.0",
+    "sparkly": "^6.0.0",
     "yargs": "^17.3.1"
   }
 }
