@@ -165,6 +165,7 @@ yargs(hideBin(process.argv))
           builder: yargs => {
             return yargs
               .positional('stream', { describe: 'the id of the stream you wish to recall', type: 'string' })
+              // TODO: Implement timeline format
               .option('format', { describe: 'the format of the output', choices: ['csv', 'table', 'graph', 'json', 'timeline'], default: 'csv' })
           },
           handler: args => {
@@ -182,6 +183,8 @@ yargs(hideBin(process.argv))
               table.setHeading('index', 'time', 'value')
               table.addRowMatrix(stream.values.map((value, index) => [index, ...value]))
               console.log(table.toString())
+            } else if (args.format === 'json') {
+              console.log(JSON.stringify({ ...stream, values: stream.values.map((value, index) => [index, ...value]) }, null, 2))
             } else {
               throw Error(`format ${args.format} not implemented yet.`)
             }
