@@ -7,6 +7,8 @@ const db = flatfile.sync('./database.db')
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
 
+import AsciiTable from 'ascii-table'
+
 const defaultStream = {
   values: []
 }
@@ -175,6 +177,11 @@ yargs(hideBin(process.argv))
               }
             } else if (args.format === 'graph') {
               console.log(sparkly(stream.values.map((value) => value[1]), { minimum: 0 }))
+            } else if (args.format === 'table') {
+              const table = new AsciiTable(formatStreamName(stream))
+              table.setHeading('index', 'time', 'value')
+              table.addRowMatrix(stream.values.map((value, index) => [index, ...value]))
+              console.log(table.toString())
             } else {
               throw Error(`format ${args.format} not implemented yet.`)
             }
