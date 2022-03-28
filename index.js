@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import sparkly from 'sparkly';
 
+// docs: https://github.com/mafintosh/flat-file-db#api
 import flatfile from 'flat-file-db'
 const db = flatfile.sync('./database.db')
 
@@ -138,6 +139,22 @@ yargs(hideBin(process.argv))
           handler: args => {
             const streams = db.keys()
             console.log(streams.map((key) => `${key} (${db.get(key).values.length})`).join('\n'))
+          }
+        })
+        .command({
+          command: 'delete <stream>',
+          description: 'delete a stream',
+          builder: yargs => {
+            return yargs
+          },
+          handler: args => {
+            const streams = db.keys()
+            if (db.has(args.stream)) {
+              db.del(args.stream)
+              console.log('Deleted stream.')
+            } else {
+              console.log('Stream does not exist.')
+            }
           }
         })
         .command({
