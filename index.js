@@ -138,7 +138,7 @@ yargs(hideBin(process.argv))
           },
           handler: args => {
             const streams = db.keys()
-            console.log(streams.map((key) => `${key} (${db.get(key).values.length})`).join('\n'))
+            console.log(streams.map((key) => `${key} (${db.get(key).values.length})`).sort().join('\n'))
           }
         })
         .command({
