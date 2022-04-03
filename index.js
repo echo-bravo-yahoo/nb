@@ -23,15 +23,36 @@ import AsciiTable from 'ascii-table'
 import sparkly from 'sparkly'
 import chart from 'chart'
 
+// time helpers
 import TimeAgo from 'javascript-time-ago'
 const en = JSON.parse(await readFile(new URL('./node_modules/javascript-time-ago/locale/en.json', import.meta.url)))
 TimeAgo.addDefaultLocale(en)
 const timeAgo = new TimeAgo('en-US')
+import chrono from 'chrono-node'
+import prt from 'parse-relative-time'
+const parseRelativeTime = prt.default
 
 updateNotifier({ pkg }).notify()
 
 const defaultStream = {
   values: []
+}
+
+function parseTimestamp(timestamp) {
+  if (chrono.parseDate(timestamp)) {
+    return chrono.parseDate(timestamp).getTime()
+  } else if (parseRelativeTime(timestamp)) {
+    return parseRelativeTime(timestamp)
+  } else {
+    // TODO: Fix up this branch...
+    const tooOld = new Date(new Date().getFullYear - 100, 0, 1)
+    const tooNew = new Date(new Date().getFullYear + 100, 0, 1)
+    if (timestamp > tooOld && timestamp < tooNew) {
+      return timestamp
+    } else {
+      throw new Error(`could not parse timestamp ${timestamp}!`)
+    }
+  }
 }
 
 function formatStreamName(stream) {
@@ -75,7 +96,8 @@ yargs(hideBin(process.argv))
       if (stream === undefined) stream = { id: args.stream, ...defaultStream }
 
       if (args.timestamp) {
-        let values = [...stream.values, [ args.timestamp, args.value ]].sort((a, b) => a[0] - b[0])
+        const parsedTimestamp = parseTimestamp(args.timestamp)
+        let values = [...stream.values, [ parsedTimestamp, args.value ]].sort((a, b) => a[0] - b[0])
         db.put(args.stream, { ...stream, values })
         console.log(`noted ${args.value} in stream ${formatStreamName(stream)} at time ${args.timestamp}.`)
       } else {
@@ -142,7 +164,7 @@ yargs(hideBin(process.argv))
       }
 
       if (correctionIndex === undefined)
-        throw Error(`stream does not contain memory with index ${index}`)
+        throw Error(`stream does not contain memory with index ${index}.`)
 
       const newValues = values
       newValues[correctionIndex] = [values[correctionIndex][0], args.note]
