@@ -20,7 +20,8 @@ const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url)
 
 // TUI helpers
 import AsciiTable from 'ascii-table'
-import sparkly from 'sparkly';
+import sparkly from 'sparkly'
+import chart from 'chart'
 
 
 updateNotifier({ pkg }).notify()
@@ -198,7 +199,7 @@ yargs(hideBin(process.argv))
             return yargs
               .positional('stream', { describe: 'the id of the stream you wish to recall', type: 'string' })
               // TODO: Implement timeline format
-              .option('format', { describe: 'the format of the output', choices: ['csv', 'table', 'graph', 'json', 'timeline'], default: 'csv' })
+              .option('format', { describe: 'the format of the output', choices: ['csv', 'table', 'chart', 'graph', 'json', 'timeline'], default: 'csv' })
           },
           handler: args => {
             const stream = db.get(args.stream)
@@ -208,6 +209,13 @@ yargs(hideBin(process.argv))
               for(let i = 0; i < stream.values.length; i++) {
                 console.log(`${i}, ${stream.values[i][0]}, ${stream.values[i][1]}`)
               }
+            } else if (args.format === 'chart') {
+              console.log(chart(stream.values.map((value) => value[1]), {
+                width: 130,
+                height: 30,
+                pointChar: '█',
+                negativePointChar: '░'
+              }))
             } else if (args.format === 'graph') {
               console.log(sparkly(stream.values.map((value) => value[1]), { minimum: 0 }))
             } else if (args.format === 'table') {
