@@ -2,13 +2,13 @@
   "name": "nb",
   "version": "1.0.0",
   "description": "nota bene: a tool for recording trends",
-  "main": "index.js",
+  "main": "nb.js",
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "bin": {
-    "nb": "index.js"
+    "nb": "nb.js"
   },
   "author": "",
   "license": "ISC",
