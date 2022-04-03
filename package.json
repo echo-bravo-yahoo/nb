@@ -15,7 +15,10 @@
   "dependencies": {
     "ascii-table": "^0.0.9",
     "chart": "github:jstrace/chart",
+    "chrono-node": "^2.3.8",
     "flat-file-db": "^1.0.0",
+    "javascript-time-ago": "^2.3.13",
+    "parse-relative-time": "^1.1.0",
     "sparkly": "^6.0.0",
     "update-notifier": "^5.1.0",
     "yargs": "^17.3.1"

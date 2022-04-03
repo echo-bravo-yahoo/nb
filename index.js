@@ -23,6 +23,10 @@ import AsciiTable from 'ascii-table'
 import sparkly from 'sparkly'
 import chart from 'chart'
 
+import TimeAgo from 'javascript-time-ago'
+const en = JSON.parse(await readFile(new URL('./node_modules/javascript-time-ago/locale/en.json', import.meta.url)))
+TimeAgo.addDefaultLocale(en)
+const timeAgo = new TimeAgo('en-US')
 
 updateNotifier({ pkg }).notify()
 
@@ -43,6 +47,16 @@ function indexOrNot(indexOrTimestamp) {
     return true
   } else {
     return false
+  }
+}
+
+function formatTime(timestamp, formatOption) {
+  if (formatOption === 'unix') {
+    return timestamp
+  } else if (formatOption === 'relative') {
+    return timeAgo.format(timestamp)
+  } else if (formatOption === 'date') {
+    return new Intl.DateTimeFormat('en-US').format(timestamp)
   }
 }
 
@@ -200,6 +214,7 @@ yargs(hideBin(process.argv))
               .positional('stream', { describe: 'the id of the stream you wish to recall', type: 'string' })
               // TODO: Implement timeline format
               .option('format', { describe: 'the format of the output', choices: ['csv', 'table', 'chart', 'graph', 'json', 'timeline'], default: 'csv' })
+              .option('time-format', { describe: 'the format of timestamps in the output', choices: ['unix', 'relative', 'date'], default: 'relative' })
           },
           handler: args => {
             const stream = db.get(args.stream)
@@ -207,7 +222,7 @@ yargs(hideBin(process.argv))
 
             if (args.format === 'csv') {
               for(let i = 0; i < stream.values.length; i++) {
-                console.log(`${i}, ${stream.values[i][0]}, ${stream.values[i][1]}`)
+                console.log(`${i}, ${formatTime(stream.values[i][0], args.timeFormat)}, ${stream.values[i][1]}`)
               }
             } else if (args.format === 'chart') {
               console.log(chart(stream.values.map((value) => value[1]), {
@@ -221,7 +236,7 @@ yargs(hideBin(process.argv))
             } else if (args.format === 'table') {
               const table = new AsciiTable(formatStreamName(stream))
               table.setHeading('index', 'time', 'value')
-              table.addRowMatrix(stream.values.map((value, index) => [index, ...value]))
+              table.addRowMatrix(stream.values.map((value, index) => [index, formatTime(value[0], args.timeFormat), value[1]]))
               console.log(table.toString())
             } else if (args.format === 'json') {
               console.log(JSON.stringify({ ...stream, values: stream.values.map((value, index) => [index, ...value]) }, null, 2))
