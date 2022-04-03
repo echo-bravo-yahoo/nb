@@ -16,6 +16,10 @@
     "ascii-table": "^0.0.9",
     "flat-file-db": "^1.0.0",
     "sparkly": "^6.0.0",
+    "update-notifier": "^5.1.0",
     "yargs": "^17.3.1"
+  },
+  "engines": {
+    "node": ">14.8.0"
   }
 }

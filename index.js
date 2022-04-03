@@ -2,17 +2,28 @@
 
 // node.js imports
 import process from 'process'
-import path from 'path';
-import { fileURLToPath } from 'url';
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import path from 'path'
+import { fileURLToPath } from 'url'
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // third-party imports
-import sparkly from 'sparkly';
+// databases
 import flatfile from 'flat-file-db'  // docs: https://github.com/mafintosh/flat-file-db#api
 const db = flatfile.sync(path.join(__dirname, 'database.db'))
+
+// CLI helpers
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
+import updateNotifier from 'update-notifier'
+import { readFile } from 'fs/promises'
+const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url)))
+
+// TUI helpers
 import AsciiTable from 'ascii-table'
+import sparkly from 'sparkly';
+
+
+updateNotifier({ pkg }).notify()
 
 const defaultStream = {
   values: []
