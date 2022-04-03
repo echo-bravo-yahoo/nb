@@ -1,13 +1,17 @@
 #!/usr/bin/env node
+
+// node.js imports
+import process from 'process'
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// third-party imports
 import sparkly from 'sparkly';
-
-// docs: https://github.com/mafintosh/flat-file-db#api
-import flatfile from 'flat-file-db'
-const db = flatfile.sync('./database.db')
-
+import flatfile from 'flat-file-db'  // docs: https://github.com/mafintosh/flat-file-db#api
+const db = flatfile.sync(path.join(__dirname, 'database.db'))
 import yargs from 'yargs'
 import { hideBin } from 'yargs/helpers'
-
 import AsciiTable from 'ascii-table'
 
 const defaultStream = {
