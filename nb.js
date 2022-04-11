@@ -262,8 +262,12 @@ yargs(hideBin(process.argv))
             for (let i = 0; i < streams.length; i++) {
               let temp = chart(streams[i].values.map((value) => value[1]), chartArgs)
               let tempArr = temp.split('\n')
-              tempArr = tempArr.map((line) => {
-                return line.slice(0, width).padEnd(width, ' ')
+              tempArr = tempArr.map((line, lineIndex) => {
+                if (lineIndex === height - 4) {
+                  return `      ${formatStreamName(streams[i])}`.slice(0, width).padEnd(width, ' ')
+                } else {
+                  return line.slice(0, width).padEnd(width, ' ')
+                }
               })
               charts.push(tempArr)
             }
