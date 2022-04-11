@@ -10,6 +10,9 @@ import chrono from 'chrono-node'
 import prt from 'parse-relative-time'
 const parseRelativeTime = prt.default
 
+// TUI helpers
+import { default as windowSize } from 'window-size'
+
 export const defaultStream = {
   values: []
 }
@@ -55,5 +58,19 @@ export function formatTime(timestamp, formatOption) {
   } else if (formatOption === 'date') {
     return new Intl.DateTimeFormat('en-US').format(timestamp)
   }
+}
+
+export function generateDimension(argDimension, dimensionName) {
+  let current = windowSize[dimensionName]
+  // height defaults to 1 less so you can see the command you ran
+  let dimension = dimensionName === 'width' ? current : current - 1
+  if (argDimension) {
+    if (typeof argDimension === "string" && argDimension.includes('%')) {
+      dimension = Math.ceil(current * (Number(argDimension.split('%')[0]) / 100))
+    } else {
+      dimension = Number(argDimension)
+    }
+  }
+  return dimension
 }
 

@@ -22,13 +22,15 @@ const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url)
 import AsciiTable from 'ascii-table'
 import sparkly from 'sparkly'
 import chart from 'chart'
+import { default as windowSize } from 'window-size'
 
 import {
   defaultStream,
   formatStreamName,
   formatTime,
   indexOrNot,
-  parseTimestamp
+  parseTimestamp,
+  generateDimension
 } from './helpers.js'
 
 updateNotifier({ pkg }).notify()
@@ -200,8 +202,8 @@ yargs(hideBin(process.argv))
               }
             } else if (args.format === 'chart') {
               console.log(chart(stream.values.map((value) => value[1]), {
-                width: 130,
-                height: 30,
+                width: generateDimension(args.width, 'width'),
+                height: generateDimension(args.height, 'height'),
                 pointChar: '█',
                 negativePointChar: '░'
               }))
@@ -231,6 +233,52 @@ yargs(hideBin(process.argv))
             if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
             if (args.name) { db.put(args.stream, {... stream, name: args.name }) }
             console.log(`updated stream ${formatStreamName(stream)}.`)
+          }
+        })
+        .command({
+          command: 'dashboard',
+          description: 'show an overview of streams',
+          builder: yargs => {
+            return yargs
+          },
+          handler: async (args) => {
+            const streamNames = db.keys()
+            const streams = streamNames.map((streamName) => {
+              return db.get(streamName)
+            })
+            const chartsPerRow = 4
+            const rowCount = Math.ceil(streams.length / chartsPerRow)
+            const charts = []
+            const width = Math.floor(windowSize.width / chartsPerRow)
+            const height = Math.floor((windowSize.height - 1) / rowCount)
+            const chartArgs = {
+              width: width,
+              height: height,
+              pointChar: '█',
+              negativePointChar: '░',
+              axisChar: '.'
+            }
+
+            for (let i = 0; i < streams.length; i++) {
+              let temp = chart(streams[i].values.map((value) => value[1]), chartArgs)
+              let tempArr = temp.split('\n')
+              tempArr = tempArr.map((line) => {
+                return line.slice(0, width).padEnd(width, ' ')
+              })
+              charts.push(tempArr)
+            }
+
+            for (let metaRow = 0; metaRow < rowCount; metaRow++) {
+              for (let literalRow = 0; literalRow < height - 2; literalRow++) {
+                let row = ''
+                for(let column = 0; column < chartsPerRow; column++) {
+                  if (metaRow * chartsPerRow + column < streams.length) {
+                    row += charts[metaRow * chartsPerRow + column][literalRow]
+                  }
+                }
+                console.log(row)
+              }
+            }
           }
         })
     },
