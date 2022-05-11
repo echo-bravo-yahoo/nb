@@ -246,9 +246,10 @@ yargs(hideBin(process.argv))
           },
           handler: async (args) => {
             const streamNames = db.keys()
-            const streams = streamNames.map((streamName) => {
+            let streams = streamNames.map((streamName) => {
               return db.get(streamName)
             })
+            streams = streams.sort((a, b) => (a.id).localeCompare(b.id));
             const chartsPerRow = 4
             const rowCount = Math.ceil(streams.length / chartsPerRow)
             const charts = []
