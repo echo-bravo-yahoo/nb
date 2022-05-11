@@ -47,7 +47,10 @@ yargs(hideBin(process.argv))
     },
     handler: args => {
       let stream = db.get(args.stream)
-      if (stream === undefined) stream = { id: args.stream, ...defaultStream }
+      if (stream === undefined) {
+        stream = { id: args.stream, ...defaultStream }
+        console.log(`stream ${args.stream} does not exist; creating it now.`)
+      }
 
       if (args.timestamp) {
         const parsedTimestamp = parseTimestamp(args.timestamp)
