@@ -207,8 +207,7 @@ yargs(hideBin(process.argv))
               console.log(chart(stream.values.map((value) => value[1]), {
                 width: generateDimension(args.width, 'width'),
                 height: generateDimension(args.height, 'height'),
-                pointChar: '█',
-                negativePointChar: '░'
+                dense: true
               }))
             } else if (args.format === 'graph') {
               console.log(sparkly(stream.values.map((value) => value[1]), { minimum: 0 }))
@@ -258,9 +257,7 @@ yargs(hideBin(process.argv))
             const chartArgs = {
               width: width,
               height: height,
-              pointChar: '█',
-              negativePointChar: '░',
-              axisChar: '.'
+              dense: true
             }
 
             for (let i = 0; i < streams.length; i++) {

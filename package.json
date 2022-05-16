@@ -14,7 +14,7 @@
   "license": "ISC",
   "dependencies": {
     "ascii-table": "^0.0.9",
-    "chart": "github:jstrace/chart",
+    "chart": "github:Trial-In-Error/chart",
     "chrono-node": "^2.3.8",
     "flat-file-db": "^1.0.0",
     "javascript-time-ago": "^2.3.13",
