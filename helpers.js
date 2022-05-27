@@ -18,8 +18,10 @@ export const defaultStream = {
 }
 
 export function parseTimestamp(timestamp) {
+  // chrono takes natural language, eg, 5 days ago, this Friday at 13:00, etc.
   if (chrono.parseDate(timestamp)) {
     return chrono.parseDate(timestamp).getTime()
+  // parse-relative-time takes relative descriptions, eg, 2 days, -2 days, in 1 week
   } else if (parseRelativeTime(timestamp)) {
     return parseRelativeTime(timestamp)
   } else {
