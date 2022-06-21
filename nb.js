@@ -286,10 +286,12 @@ yargs(hideBin(process.argv))
             }
           }
         })
+        .demandCommand()
+        .help()
     },
     handler: args => {
-      yargs.help()
     }
   })
+  .demandCommand()
   .help()
   .argv

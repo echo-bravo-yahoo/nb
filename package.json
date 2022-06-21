@@ -5,7 +5,7 @@
   "main": "nb.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "server": "node server.js"
   },
   "bin": {
     "nb": "nb.js"
@@ -19,6 +19,7 @@
     "flat-file-db": "^1.0.0",
     "javascript-time-ago": "^2.3.13",
     "parse-relative-time": "^1.1.0",
+    "server": "^1.0.37",
     "sparkly": "^6.0.0",
     "update-notifier": "^5.1.0",
     "window-size": "^1.1.1",
