@@ -341,8 +341,7 @@ yargs(hideBin(process.argv))
               }
               if (updates.length) {
                 let existing = db.get(fromStreams[i])
-                // TODO: sort these
-                existing.values = [...existing.values, ...updates].sort
+                existing.values = [...existing.values, ...updates].sort((a, b) => a[0] - b[0])
                 db.put(fromStreams[i], existing)
                 console.log(`Made updates to stream ${fromStreams[i]}`)
               }
