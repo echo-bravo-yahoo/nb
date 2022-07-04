@@ -5,7 +5,7 @@ import process from 'process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-import { readFile } from 'fs/promises'
+import { readFile, rm, stat } from 'fs/promises'
 
 // third-party imports
 // databases
@@ -284,6 +284,72 @@ yargs(hideBin(process.argv))
                 console.log(row)
               }
             }
+          }
+        })
+        .demandCommand()
+        .help()
+    },
+    handler: args => {
+    }
+  })
+  .command({
+    command: 'db',
+    description: 'manage the database',
+    builder: yargs => {
+      return yargs
+        .command({
+          command: 'merge <from> <to>',
+          description: 'merge two databases together, deleting the "from" database. if the "to" database does not exist, this will effectively rename "from". each entry in each stream of the "from" database will be copied to the same stream in the "to" database, given that there does not already exist a note with that timestamp in that stream of the "to" database.',
+          builder: yargs => {
+            return yargs
+          },
+          handler: async (args) => {
+            let from, to
+            try {
+              await stat(path.resolve(args.from))
+              from = flatfile.sync(path.resolve(args.from))
+            } catch (e) {
+              throw new Error(`error reading "from" database at "${args.from}":\n${e}`)
+            }
+
+            try {
+              await stat(path.resolve(args.from))
+              to = flatfile.sync(path.resolve(args.to))
+            } catch (e) {
+              throw new Error(`error reading "to" database at "${args.from}":\n${e}`)
+            }
+
+
+
+            let fromStreams = from.keys()
+            for(let i = 0; i < fromStreams.length; i++) {
+              if (!to.has(fromStreams[i])) {
+                to.put(fromStreams[i], { id: fromStreams[i], ...defaultStream })
+                console.log(`stream ${fromStreams[i]} does not exist; creating it now.`)
+              }
+
+              let fromValues = from.get(fromStreams[i]).values
+              let toValues = from.get(fromStreams[i]).values
+              let updates = []
+
+              for (let i = 0; i < fromValues.length; i++) {
+                let match = toValues.filter((note) => note[0] === fromValues[i][0])
+                if (!match) {
+                  // console.log(`Did not find match for value ${i} at timestamp ${match[0]}`)
+                  updates.push(fromValues[i])
+                }
+              }
+              if (updates.length) {
+                let existing = db.get(fromStreams[i])
+                // TODO: sort these
+                existing.values = [...existing.values, ...updates].sort
+                db.put(fromStreams[i], existing)
+                console.log(`Made updates to stream ${fromStreams[i]}`)
+              }
+            }
+
+            await rm(path.resolve(args.from))
+            console.log(`merged database ${args.from} into database ${args.to}.`)
           }
         })
         .demandCommand()
