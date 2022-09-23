@@ -12,13 +12,13 @@ let nb = path.resolve(__dirname, 'nb.js')
 
 const db = flatfile.sync(path.join(__dirname, 'server-config.db'))
 
-function changeCommand(event) {
-
-}
-
 function makeCommandsLinks(ctx, input) {
   let isInCommandSection = false
   let commandRegExp = /(nb\.js)\s+((?:(?!&|<|\[|  ).)+)\s/
+
+  function makeLink(link, text) {
+    return `<a href="/nb/${link} --help" onclick="doCommand(event, '${link} --help')">${text}</a>`
+  }
 
   let lines = input.split('\n')
   .map(line => {
@@ -31,7 +31,7 @@ function makeCommandsLinks(ctx, input) {
           itemsSoFar.push(item)
         }
         if (!isAnArg) {
-          parsedLine += `<a href="/nb/${itemsSoFar.join(' ')}">${item}</a> `
+          parsedLine += `${makeLink(itemsSoFar.join(' '), item)} `
         } else {
           parsedLine += `${item} `
         }
@@ -45,7 +45,7 @@ function makeCommandsLinks(ctx, input) {
     } 
     
     else if (isInCommandSection && line.startsWith('  ')) {
-      return line.replace(commandRegExp, `$1 <a href="/nb/$2">$2</a> `)
+      return line.replace(commandRegExp, `$1 ${makeLink('$2', '$2')} `)
     } 
     
     else if (isInCommandSection && !line.startsWith('  ')) {
@@ -62,52 +62,58 @@ function sanitizeHtml(input) {
 }
 
 function runAndRenderPage(ctx, commandString) {
-  // this function is only used by the web code
-  // do not add any node-specific stuff in it
-  // do not run it outside of the rendered output
-  async function doCommand(event) {
-    event.preventDefault()
-    let text = await (await fetch(window.location.pathname, { method: 'POST' })).text()
-    let outputElement = document.querySelector('#output')
-    outputElement.innerHTML += text
-  }
-
-  return `<script>${doCommand.toString()}</script><pre>\n` +
-    makeCommandsLinks(ctx, runAndRender(ctx, commandString, '--help')) +
-    `\n\n` +
-    `<a href='#' onclick="doCommand(event)">run <b>nb.js ${commandString}</b></a>` +
-    `\n</pre>` +
-    `<pre id="output"></pre>`
+  return form(`> nb.js `, sanitizeHtml(commandString))
+    + '<hr style="border: 0; border-top: 0.5px solid gray; margin: 20px 0px;"/>'
+    + `<pre id="output">${makeCommandsLinks(ctx, runAndRender(ctx, commandString))}</pre>`
 }
 
-function form(prefix, defaultValue, suffix) {
-  function onInput(event) {
-    document.querySelector('#spacer').innerHTML = ` ${event.target.value} `
+function form(prefix, defaultValue) {
+  function onInput(value) {
+    document.querySelector('#spacer').innerHTML = ` ${value} `
   }
 
-  function focusInput() {
-    document.querySelector('#command-input').focus()
-  }
-
-  function goToCommand(event) {
+  async function doCommand(event, link) {
     event.preventDefault()
-    window.location.pathname = `/nb/${encodeURIComponent(event.target[0].value)}`
+    let command = link || event.target[0].value
+    let outputElement = document.querySelector('#output')
+    window.history.pushState({}, '', encodeURIComponent(command))
+
+    document.querySelector('#command-input').value = command
+    onInput(command)
+
+    let text = await (await fetch(`/nb/${encodeURIComponent(command)}`, { method: 'POST' })).text()
+    outputElement.innerHTML = makeCommandsLinks({}, text) + '\n\n' + outputElement.innerHTML
   }
 
-  let formStyle = `style="white-space: normal; display: inline-block;" `
+  // this hack makes the cursor move to the end of the text on focus
+  function onFocus(event) {
+    let val = event.target.value
+    event.target.value = ''
+    event.target.value = val
+  }
+
+  function addListeners() {
+    window.addEventListener('keydown', () => {
+      document.querySelector('#command-input').focus()
+    })
+  }
+
+  let formStyle = `style="white-space: normal; font-family: monospace;" `
   let spanStyle = `style="white-space: pre;" `
   let wrapperStyle = `style="position: relative; display: inline-block;" `
   let inputStyle = `style="position: absolute; width: 100%; left: 0; border: 0; padding: 0; margin: 0; font-family: inherit; font-size: inherit; text-align: center;" `
-  return `<script>${onInput.toString()}; ${focusInput.toString()}; ${goToCommand.toString()};</script><form ${formStyle} onclick="focusInput()" onsubmit="goToCommand(event)">
+
+  return `<script>${onInput.toString()}; ${doCommand.toString()}; ${onFocus.toString()}; (${addListeners.toString()}()); ${makeCommandsLinks.toString()};</script>
+  <form ${formStyle} onsubmit="doCommand(event)">
     <span ${spanStyle}>${prefix.trim()}</span><span ${wrapperStyle}>
       <span id="spacer" ${spanStyle}> ${defaultValue} </span>
-      <input id="command-input" ${inputStyle} oninput="onInput(event)" value="${defaultValue.replace(/"/g,'\\"')}"></input>
-    </span><span ${spanStyle}>${suffix}</span>
+      <input id="command-input" ${inputStyle} oninput="onInput(event.target.value)" onfocus="onFocus(event)" value="${defaultValue.replace(/"/g,'\\"')}"></input>
+    </span><span ${spanStyle}></span>
   </form>`
 }
 
-function runAndRender(ctx, commandString, nonEditableFlags) {
-  let command = `${nb} ${commandString} ${nonEditableFlags}`
+function runAndRender(ctx, commandString) {
+  let command = `${nb} ${commandString}`
   let output
   try {
     output = execSync(command, { encoding: 'utf8' })
@@ -118,8 +124,7 @@ function runAndRender(ctx, commandString, nonEditableFlags) {
   console.log(`> ${command}`)
   console.log(output)
 
-  return `> ${form(`nb.js `, sanitizeHtml(commandString), nonEditableFlags)}\n\n`
-    + sanitizeHtml(output)
+  return sanitizeHtml(`> nb.js ${sanitizeHtml(commandString)}\n\n` + output)
 }
 
 function getCommand(ctx) {
@@ -152,13 +157,12 @@ server({ port, security: { csrf: false }}, [
     if (recents) {
       recentsText = Object.entries(recents)
         .sort((a, b) => b[1] - a[1]).map(([key]) => {
-          return `- <a href="nb/${key}">${key}</a>`
+          return `- <a href="nb/${key} --help">${key}</a>`
         })
         .join('<br />')
     }
-    console.log()
 
-    return `<a href="nb">nb</a><br />${recentsText}`
+    return `<a href="nb/--help">nb</a><br />${recentsText}`
   }),
   
   get('/nb', ctx => runAndRenderPage(ctx, '')),
