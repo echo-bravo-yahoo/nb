@@ -12,49 +12,11 @@ let nb = path.resolve(__dirname, 'nb.js')
 
 const db = flatfile.sync(path.join(__dirname, 'server-config.db'))
 
-function makeCommandsLinks(ctx, input) {
-  let isInCommandSection = false
-  let commandRegExp = /(nb\.js)\s+((?:(?!&|<|\[|  ).)+)\s/
-
-  function makeLink(link, text) {
-    return `<a href="/nb/${link} --help" onclick="doCommand(event, '${link} --help')">${text}</a>`
-  }
-
-  let lines = input.split('\n')
-  .map(line => {
-
-    if (line.startsWith('nb.js')) {
-      let parsedLine = ''
-      line.split(' ').reduce((itemsSoFar, item) => {
-        let isAnArg = item.startsWith('&') || item.startsWith('[')
-        if (item !== 'nb.js' && !isAnArg) {
-          itemsSoFar.push(item)
-        }
-        if (!isAnArg) {
-          parsedLine += `${makeLink(itemsSoFar.join(' '), item)} `
-        } else {
-          parsedLine += `${item} `
-        }
-        return itemsSoFar
-      }, [])
-      return parsedLine
-    }
-
-    if (line.startsWith('Commands:')) {
-      isInCommandSection = true
-    } 
-    
-    else if (isInCommandSection && line.startsWith('  ')) {
-      return line.replace(commandRegExp, `$1 ${makeLink('$2', '$2')} `)
-    } 
-    
-    else if (isInCommandSection && !line.startsWith('  ')) {
-      isInCommandSection = false
-    } 
-    
-    return line
-  })
-  return lines.join("\n")
+function injectScripts(...fns) {
+  return `<script>${fns.map(fn => {
+    if (typeof fn === 'function') return fn.toString()
+    else return fn
+  }).join(';')}</script>`
 }
 
 function sanitizeHtml(input) {
@@ -62,9 +24,13 @@ function sanitizeHtml(input) {
 }
 
 function runAndRenderPage(ctx, commandString) {
-  return form(`> nb.js `, sanitizeHtml(commandString))
-    + '<hr style="border: 0; border-top: 0.5px solid gray; margin: 20px 0px;"/>'
-    + `<pre id="output">${makeCommandsLinks(ctx, runAndRender(ctx, commandString))}</pre>`
+  return `<body style="font-size: 13px; margin: 0px;">`
+    + '<div style="position: sticky; background: white; top: 0px; padding: 1.3em 10px 0px 10px;">'
+    + form(`> nb.js `, sanitizeHtml(commandString))
+    + '<hr style="border: 0; border-top: 0.5px solid gray; margin: 1.5em 0px;"/>'
+    + `</div>`
+    + `<pre id="output" style="margin: 10px;">${formatCommandOutput(ctx, commandString, sanitizeHtml(runCommand(ctx, commandString)))}</pre>`
+    + `</body>`
 }
 
 function form(prefix, defaultValue) {
@@ -82,7 +48,7 @@ function form(prefix, defaultValue) {
     onInput(command)
 
     let text = await (await fetch(`/nb/${encodeURIComponent(command)}`, { method: 'POST' })).text()
-    outputElement.innerHTML = makeCommandsLinks({}, text) + '\n\n' + outputElement.innerHTML
+    outputElement.innerHTML = formatCommandOutput({}, command, text) + '\n\n' + outputElement.innerHTML
   }
 
   // this hack makes the cursor move to the end of the text on focus
@@ -93,8 +59,17 @@ function form(prefix, defaultValue) {
   }
 
   function addListeners() {
-    window.addEventListener('keydown', () => {
-      document.querySelector('#command-input').focus()
+    window.addEventListener('keydown', (event) => {
+      console.log(event)
+      if (
+        event.key.match(/^[a-zA-Z0-9]$/) 
+        && event.altKey === false
+        && event.metaKey === false
+        && event.ctrlKey === false
+        && event.shiftKey === false
+      ) {
+        document.querySelector('#command-input').focus()
+      }
     })
   }
 
@@ -103,7 +78,7 @@ function form(prefix, defaultValue) {
   let wrapperStyle = `style="position: relative; display: inline-block;" `
   let inputStyle = `style="position: absolute; width: 100%; left: 0; border: 0; padding: 0; margin: 0; font-family: inherit; font-size: inherit; text-align: center;" `
 
-  return `<script>${onInput.toString()}; ${doCommand.toString()}; ${onFocus.toString()}; (${addListeners.toString()}()); ${makeCommandsLinks.toString()};</script>
+  return `${injectScripts(onInput, doCommand, onFocus, `(${addListeners.toString()}())`, formatCommandOutput, sanitizeHtml)}
   <form ${formStyle} onsubmit="doCommand(event)">
     <span ${spanStyle}>${prefix.trim()}</span><span ${wrapperStyle}>
       <span id="spacer" ${spanStyle}> ${defaultValue} </span>
@@ -112,8 +87,55 @@ function form(prefix, defaultValue) {
   </form>`
 }
 
-function runAndRender(ctx, commandString) {
-  let command = `${nb} ${commandString}`
+function formatCommandOutput(ctx, command, input) {
+  let isInCommandSection = false
+  let commandRegExp = /(nb\.js)\s+((?:(?!&|<|\[|  ).)+)\s/
+
+  function makeLink(link, text, help = true) {
+    return `<a href="/nb/${link}${help ? ' --help' : ""}" onclick="doCommand(event, '${link}${help ? ' --help' : ""}')">${text}</a>`
+  }
+
+  let lines = input.split('\n')
+    .map(line => {
+
+      if (line.startsWith('nb.js')) {
+        let parsedLine = ''
+        line.split(' ').reduce((itemsSoFar, item) => {
+          let isAnArg = item.startsWith('&') || item.startsWith('[')
+          if (item !== 'nb.js' && !isAnArg) {
+            itemsSoFar.push(item)
+          }
+          if (!isAnArg) {
+            parsedLine += `${makeLink(itemsSoFar.join(' '), item)} `
+          } else {
+            parsedLine += `${item} `
+          }
+          return itemsSoFar
+        }, [])
+        return parsedLine
+      }
+
+      if (line.startsWith('Commands:')) {
+        isInCommandSection = true
+      }
+
+      else if (isInCommandSection && line.startsWith('  ')) {
+        return line.replace(commandRegExp, `$1 ${makeLink('$2', '$2')} `)
+      }
+
+      else if (isInCommandSection && !line.startsWith('  ')) {
+        isInCommandSection = false
+      }
+
+      return line
+    })
+  return `> nb.js ${sanitizeHtml(command)}    ${makeLink(command, '(repeat)', false)}\n\n` + lines.join("\n")
+}
+
+function runCommand(ctx, commandString) {
+  let command = `${nb} ${commandString.split(/\s/)
+    // best effort safety -- wrap all args in single quotes
+    .map(part => `'${part.replace(/'/g, "'\\''")}'`).join(' ')}`
   let output
   try {
     output = execSync(command, { encoding: 'utf8' })
@@ -124,12 +146,12 @@ function runAndRender(ctx, commandString) {
   console.log(`> ${command}`)
   console.log(output)
 
-  return sanitizeHtml(`> nb.js ${sanitizeHtml(commandString)}\n\n` + output)
+  return output
 }
 
 function getCommand(ctx) {
-  let commandString = decodeURIComponent(ctx.params.command).trim()
-  
+  let commandString = ctx.params.command
+
   let routes = db.get('recent') || {}
   if (!routes[commandString]) routes[commandString] = 0
   Object.keys(routes).forEach(key => {
@@ -151,7 +173,6 @@ const port = 8080
 
 server({ port, security: { csrf: false }}, [
   get('/', ctx => {
-
     let recents = db.get('recent') 
     let recentsText = ''
     if (recents) {
@@ -166,10 +187,21 @@ server({ port, security: { csrf: false }}, [
   }),
   
   get('/nb', ctx => runAndRenderPage(ctx, '')),
-  post('/nb', ctx => runAndRender(ctx, '')),
+  post('/nb', ctx => server.reply
+    .type("text/plain")
+    .send(runCommand(ctx, ''))),
 
   get('/nb/:command', ctx => runAndRenderPage(ctx, getCommand(ctx))),
-  post('/nb/:command', ctx => runAndRender(ctx, getCommand(ctx)))
-]);
+  post('/nb/:command', ctx => {
+    return server.reply
+    .type("text/plain")
+    .send(runCommand(ctx, getCommand(ctx)))}
+  )
+],
+  server.router.error(ctx => {
+    console.log(ctx.error)
+    return server.reply.status(500).send(ctx.error.message)
+  })
+);
 
-console.log(`Listening on port ${port}...`)
+console.log(`Listening on http://localhost:${port}`)
