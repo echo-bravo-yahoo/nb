@@ -30,19 +30,22 @@ import {
   formatTime,
   indexOrNot,
   parseTimestamp,
-  generateDimension
+  generateDimension,
+  printIfExists,
+  handleValueAndTags
 } from './helpers.js'
 
 updateNotifier({ pkg }).notify()
 
 yargs(hideBin(process.argv))
   .command({
-    command: 'note <stream> <value>',
+    command: 'note <stream> [value] [tags...]',
     description: 'record something worth remembering',
     builder: yargs => {
       return yargs
         .positional('stream', { describe: 'the id of the stream to write to', type: 'string' })
-        .positional('value', { describe: 'the value to remember' })
+        .positional('value', { describe: 'the value to remember', type: "string" })
+        .positional('tags', { describe: 'tags to categorize this value', type: "array" })
         .option('timestamp', { alias: 'ts' })
     },
     handler: args => {
@@ -52,14 +55,16 @@ yargs(hideBin(process.argv))
         console.log(`stream ${args.stream} does not exist; creating it now.`)
       }
 
+      const { value, tags } = handleValueAndTags(args.value, args.tags)
+
       if (args.timestamp) {
         const parsedTimestamp = parseTimestamp(args.timestamp)
-        let values = [...stream.values, [ parsedTimestamp, args.value ]].sort((a, b) => a[0] - b[0])
+        let values = [...stream.values, [parsedTimestamp, value, ...tags]].sort((a, b) => a[0] - b[0])
         db.put(args.stream, { ...stream, values })
-        console.log(`noted ${args.value} in stream ${formatStreamName(stream)} at time ${args.timestamp}.`)
+        console.log(`noted ${value}${printIfExists` (${tags})`} in stream ${formatStreamName(stream)} at time ${args.timestamp}.`)
       } else {
-        db.put(args.stream, { ...stream, values: [...stream.values, [ Date.now(), args.value ]] })
-        console.log(`noted ${args.value} in stream ${formatStreamName(stream)}.`)
+        db.put(args.stream, { ...stream, values: [...stream.values, [Date.now(), value, ...tags]] })
+        console.log(`noted ${value}${printIfExists` (${tags})`} in stream ${formatStreamName(stream)}.`)
       }
     }
   })
@@ -94,15 +99,17 @@ yargs(hideBin(process.argv))
     }
   })
   .command({
-    command: 'correct <stream> [index] [note]',
+    command: 'correct <stream> [index] [value] [tags...]',
     description: 'correct a memory',
     builder: yargs => {
       return yargs
         .positional('stream', { describe: 'the stream containing the memory to replace' })
         .positional('index', { describe: 'the memory to replace; reference it by its timestamp or index. if not specified, the newest note will be corrected' })
-        .option('note', { describe: 'the new note value' })
+        .positional('value', { describe: 'the new note value' })
+        .positional('tags', { describe: 'the new note\'s tags', type: "array" })
     },
     handler: args => {
+
       let stream = db.get(args.stream)
       if (stream === undefined)
         throw Error(`stream ${args.stream} does not exist.`)
@@ -124,13 +131,15 @@ yargs(hideBin(process.argv))
         throw Error(`stream does not contain memory with index ${index}.`)
 
       const newValues = values
-      newValues[correctionIndex] = [values[correctionIndex][0], args.note]
+
+      const { value, tags } = handleValueAndTags(args.value, args.tags)
+      newValues[correctionIndex] = [values[correctionIndex][0], value, ...tags]
 
       db.put(args.stream, { ...stream, values: newValues })
       if (args.index === undefined) {
-        console.log(`corrected latest note ${values.length} in stream ${formatStreamName(stream)}.`)
+        console.log(`corrected latest note ${values.length} (${value}${printIfExists`, [${tags}]`}) in stream ${formatStreamName(stream)}.`)
       } else {
-        console.log(`corrected note ${args.index} in stream ${formatStreamName(stream)}.`)
+        console.log(`corrected note ${args.index} (${value}${printIfExists`, [${tags}]`}) in stream ${formatStreamName(stream)}.`)
       }
     }
   })
@@ -194,30 +203,45 @@ yargs(hideBin(process.argv))
               // TODO: Implement timeline format
               .option('format', { describe: 'the format of the output', choices: ['csv', 'table', 'chart', 'graph', 'json', 'timeline'], default: 'csv' })
               .option('time-format', { describe: 'the format of timestamps in the output', choices: ['unix', 'relative', 'date'], default: 'relative' })
+              .option('reverse', { describe: "reverse the order of the returned data", type: "boolean", default: false })
+              .option('limit', { describe: "how many entries to display", type: "number"})
           },
           handler: args => {
             const stream = db.get(args.stream)
             if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
 
+            // attach the index to the note before (potentially) reversing it and trimming it
+            let notes = stream.values.map((value, index) => [index, ...value])
+
+            if (args.reverse) notes = notes.reverse()
+
+            if (typeof args.limit === 'number' && args.limit > 0) {
+              notes = notes.slice(0, args.limit)
+            }
+
             if (args.format === 'csv') {
-              for(let i = 0; i < stream.values.length; i++) {
-                console.log(`${i}, ${formatTime(stream.values[i][0], args.timeFormat)}, ${stream.values[i][1]}`)
-              }
+              notes.forEach((note) => {
+                let [index, time, value, ...otherValues] = note
+                console.log(`${index}, ${formatTime(time, args.timeFormat)}, ${value}${printIfExists`, (${otherValues})`}`)
+              })
             } else if (args.format === 'chart') {
-              console.log(chart(stream.values.map((value) => value[1]), {
+              console.log(chart(notes.map((value) => value[2]), {
                 width: generateDimension(args.width, 'width'),
                 height: generateDimension(args.height, 'height'),
                 dense: true
               }))
             } else if (args.format === 'graph') {
-              console.log(sparkly(stream.values.map((value) => value[1]), { minimum: 0 }))
+              console.log(sparkly(notes.map((value) => value[2]), { minimum: 0 }))
             } else if (args.format === 'table') {
               const table = new AsciiTable(formatStreamName(stream))
-              table.setHeading('index', 'time', 'value')
-              table.addRowMatrix(stream.values.map((value, index) => [index, formatTime(value[0], args.timeFormat), value[1]]))
+              table.setHeading('index', 'time', 'value', 'tags')
+              table.addRowMatrix(notes.map(note => {
+                let [index, time, value, ...otherValues] = note
+                return [index, formatTime(time, args.timeFormat), value, printIfExists`${otherValues}`]
+              }))
               console.log(table.toString())
             } else if (args.format === 'json') {
-              console.log(JSON.stringify({ ...stream, values: stream.values.map((value, index) => [index, ...value]) }, null, 2))
+              console.log(JSON.stringify({ ...stream, values: notes }, null, 2))
             } else {
               throw Error(`format ${args.format} not implemented yet.`)
             }
@@ -233,7 +257,7 @@ yargs(hideBin(process.argv))
           handler: args => {
             const stream = db.get(args.stream)
             if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
-            if (args.name) { db.put(args.stream, {... stream, name: args.name }) }
+            if (args.name) { db.put(args.stream, { ...stream, name: args.name }) }
             console.log(`updated stream ${formatStreamName(stream)}.`)
           }
         })
@@ -276,7 +300,7 @@ yargs(hideBin(process.argv))
             for (let metaRow = 0; metaRow < rowCount; metaRow++) {
               for (let literalRow = 0; literalRow < height - 2; literalRow++) {
                 let row = ''
-                for(let column = 0; column < chartsPerRow; column++) {
+                for (let column = 0; column < chartsPerRow; column++) {
                   if (metaRow * chartsPerRow + column < streams.length) {
                     row += charts[metaRow * chartsPerRow + column][literalRow]
                   }
@@ -322,7 +346,7 @@ yargs(hideBin(process.argv))
 
 
             let fromStreams = from.keys()
-            for(let i = 0; i < fromStreams.length; i++) {
+            for (let i = 0; i < fromStreams.length; i++) {
               if (!to.has(fromStreams[i])) {
                 to.put(fromStreams[i], { id: fromStreams[i], ...defaultStream })
                 console.log(`stream ${fromStreams[i]} does not exist; creating it now.`)
