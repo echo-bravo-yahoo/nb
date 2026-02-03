@@ -1,16 +1,7 @@
 #!/usr/bin/env node
 
-// node.js imports
 import process from 'process'
-import path from 'path'
-import { fileURLToPath } from 'url'
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-import { readFile, rm, stat } from 'fs/promises'
-
-// third-party imports
-// databases
-import flatfile from 'flat-file-db'  // docs: https://github.com/mafintosh/flat-file-db#api
-const db = flatfile.sync(path.join(__dirname, 'database.db'))
+import { readFile } from 'fs/promises'
 
 // CLI helpers
 import yargs from 'yargs'
@@ -18,136 +9,171 @@ import { hideBin } from 'yargs/helpers'
 import updateNotifier from 'update-notifier'
 const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url)))
 
-// TUI helpers
-import AsciiTable from 'ascii-table'
-import sparkly from 'sparkly'
-import chart from 'chart'
-import { default as windowSize } from 'window-size'
-
+// Local modules
+import { parseTimestamp } from './helpers.js'
+import { getStream, createStream, deleteStream, listStreams, formatTagDef } from './lib/streams.js'
+import { writePoint, closeWriteApi } from './lib/influx.js'
 import {
-  defaultStream,
-  formatStreamName,
-  formatTime,
-  indexOrNot,
-  parseTimestamp,
-  generateDimension
-} from './helpers.js'
+  parseTagDefinition,
+  validateProvidedTags,
+  validateValueType,
+  coerceValue
+} from './lib/validation.js'
 
 updateNotifier({ pkg }).notify()
 
 yargs(hideBin(process.argv))
   .command({
-    command: 'note <stream> <value>',
+    command: 'note <value>',
     description: 'record something worth remembering',
     builder: yargs => {
       return yargs
-        .positional('stream', { describe: 'the id of the stream to write to', type: 'string' })
-        .positional('value', { describe: 'the value to remember' })
-        .option('timestamp', { alias: 'ts' })
+        .positional('value', { describe: 'the value to record', type: 'string' })
+        .option('stream', {
+          alias: 's',
+          describe: 'the stream to write to',
+          type: 'string',
+          demandOption: true
+        })
+        .option('time', {
+          alias: 't',
+          describe: 'timestamp for the note (natural language supported)',
+          type: 'string'
+        })
+        .parserConfiguration({
+          'unknown-options-as-args': false
+        })
+        .strict(false) // Allow unknown options (dynamic tags)
     },
-    handler: args => {
-      let stream = db.get(args.stream)
-      if (stream === undefined) {
-        stream = { id: args.stream, ...defaultStream }
-        console.log(`stream ${args.stream} does not exist; creating it now.`)
-      }
+    handler: async (args) => {
+      try {
+        // Look up stream
+        const stream = await getStream(args.stream)
+        if (!stream) {
+          console.error(`Error: Stream "${args.stream}" does not exist.`)
+          console.error('Create it first with: nb stream create <name> --measure <measureName>')
+          process.exit(1)
+        }
 
-      if (args.timestamp) {
-        const parsedTimestamp = parseTimestamp(args.timestamp)
-        let values = [...stream.values, [ parsedTimestamp, args.value ]].sort((a, b) => a[0] - b[0])
-        db.put(args.stream, { ...stream, values })
-        console.log(`noted ${args.value} in stream ${formatStreamName(stream)} at time ${args.timestamp}.`)
-      } else {
-        db.put(args.stream, { ...stream, values: [...stream.values, [ Date.now(), args.value ]] })
-        console.log(`noted ${args.value} in stream ${formatStreamName(stream)}.`)
-      }
-    }
-  })
-  .command({
-    command: 'denote <stream> [index]',
-    description: 'delete a memory not worthy of rememberance',
-    builder: yargs => {
-      return yargs
-    },
-    handler: args => {
-      let stream = db.get(args.stream)
-      if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
-      let values = [...stream.values]
+        // Validate provided tags against stream definition
+        const validatedTags = validateProvidedTags(args, stream.tags)
 
-      if (args.note === undefined) {
-        // no note specified? delete the newest
-        values.splice(values.length - 1, 1)
-      } else if (indexOrNot(args.note)) {
-        // note is small? delete the one at that index
-        values.splice(args.note, 1)
-      } else {
-        // note is big? delete the one with that timestamp
-        values = values.filter((value) => value[0] !== args.note)
-      }
+        // Coerce value to stream's type
+        const typedValue = coerceValue(args.value, stream.type)
 
-      db.put(args.stream, { ...stream, values })
-      if (args.note === undefined) {
-        console.log(`deleted latest note ${values.length} in stream ${formatStreamName(stream)}.`)
-      } else {
-        console.log(`deleted note ${args.note} in stream ${formatStreamName(stream)}.`)
-      }
-    }
-  })
-  .command({
-    command: 'correct <stream> [index] [note]',
-    description: 'correct a memory',
-    builder: yargs => {
-      return yargs
-        .positional('stream', { describe: 'the stream containing the memory to replace' })
-        .positional('index', { describe: 'the memory to replace; reference it by its timestamp or index. if not specified, the newest note will be corrected' })
-        .option('note', { describe: 'the new note value' })
-    },
-    handler: args => {
-      let stream = db.get(args.stream)
-      if (stream === undefined)
-        throw Error(`stream ${args.stream} does not exist.`)
+        // Parse timestamp
+        const timestamp = args.time ? parseTimestamp(args.time) : Date.now()
 
-      let values = [...stream.values]
-      let correctionIndex
-      if (args.index !== undefined) {
-        for (let i = 0; i < values.length; i++) {
-          if (values[i][0] === args.index || i === args.index) {
-            correctionIndex = i
-            break
+        // Convert validated tags for InfluxDB (stringify arrays and numbers for tags)
+        const influxTags = {}
+        for (const [key, val] of Object.entries(validatedTags)) {
+          if (Array.isArray(val)) {
+            influxTags[key] = JSON.stringify(val)
+          } else {
+            influxTags[key] = String(val)
           }
         }
-      } else {
-        correctionIndex = values.length - 1
-      }
 
-      if (correctionIndex === undefined)
-        throw Error(`stream does not contain memory with index ${index}.`)
+        // Write to InfluxDB
+        await writePoint({
+          measurement: stream.measure,
+          tags: influxTags,
+          value: typedValue,
+          type: stream.type,
+          timestamp
+        })
 
-      const newValues = values
-      newValues[correctionIndex] = [values[correctionIndex][0], args.note]
+        await closeWriteApi()
 
-      db.put(args.stream, { ...stream, values: newValues })
-      if (args.index === undefined) {
-        console.log(`corrected latest note ${values.length} in stream ${formatStreamName(stream)}.`)
-      } else {
-        console.log(`corrected note ${args.index} in stream ${formatStreamName(stream)}.`)
+        if (args.time) {
+          console.log(`Noted ${typedValue} in stream "${args.stream}" at ${args.time}.`)
+        } else {
+          console.log(`Noted ${typedValue} in stream "${args.stream}".`)
+        }
+      } catch (err) {
+        console.error(`Error: ${err.message}`)
+        process.exit(1)
       }
     }
   })
   .command({
     command: 'stream',
-    description: 'manage streams of memory',
+    description: 'manage streams',
     builder: yargs => {
       return yargs
         .command({
           command: 'list',
-          description: 'list streams',
+          description: 'list all streams',
+          handler: async () => {
+            try {
+              const streams = await listStreams()
+
+              if (streams.length === 0) {
+                console.log('No streams defined.')
+                console.log('Create one with: nb stream create <name> --measure <measureName>')
+                return
+              }
+
+              for (const stream of streams) {
+                const tagsStr = stream.tags.length > 0
+                  ? `[${stream.tags.map(formatTagDef).join(', ')}]`
+                  : '[]'
+                console.log(`${stream.name} (${stream.type}) ${tagsStr} -> measurement: ${stream.measure}`)
+              }
+            } catch (err) {
+              console.error(`Error: ${err.message}`)
+              process.exit(1)
+            }
+          }
+        })
+        .command({
+          command: 'create <name>',
+          description: 'create a new stream',
           builder: yargs => {
             return yargs
+              .positional('name', { describe: 'name of the stream', type: 'string' })
+              .option('measure', {
+                alias: 'm',
+                describe: 'InfluxDB measurement name',
+                type: 'string',
+                demandOption: true
+              })
+              .option('tag', {
+                alias: 't',
+                describe: 'tag definition: "name,type[,options...]" (can be used multiple times)',
+                type: 'string',
+                array: true,
+                default: []
+              })
+              .option('type', {
+                describe: 'value type for the measurement',
+                type: 'string',
+                choices: ['float', 'integer', 'string', 'boolean'],
+                default: 'float'
+              })
           },
-          handler: args => {
-            const streams = db.keys()
-            console.log(streams.map((key) => `${key} (${db.get(key).values.length})`).sort().join('\n'))
+          handler: async (args) => {
+            try {
+              validateValueType(args.type)
+
+              // Parse tag definitions
+              const tags = args.tag.map(parseTagDefinition)
+
+              await createStream({
+                name: args.name,
+                measure: args.measure,
+                tags,
+                type: args.type
+              })
+
+              const tagsStr = tags.length > 0
+                ? `[${tags.map(formatTagDef).join(', ')}]`
+                : '[]'
+              console.log(`Created stream "${args.name}" (${args.type}) ${tagsStr} -> measurement: ${args.measure}`)
+            } catch (err) {
+              console.error(`Error: ${err.message}`)
+              process.exit(1)
+            }
           }
         })
         .command({
@@ -155,207 +181,33 @@ yargs(hideBin(process.argv))
           description: 'delete a stream',
           builder: yargs => {
             return yargs
-          },
-          handler: args => {
-            const streams = db.keys()
-            if (db.has(args.stream)) {
-              db.del(args.stream)
-              console.log('Deleted stream.')
-            } else {
-              console.log('Stream does not exist.')
-            }
-          }
-        })
-        .command({
-          command: 'merge <from> <to>',
-          description: 'merge two streams together, deleting the "from" stream. if the "to" stream does not exist, this will effectively rename "from". no attempt will be made to dedupe entries.',
-          builder: yargs => {
-            return yargs
-          },
-          handler: args => {
-            if (!db.has(args.from)) throw new Error(`stream ${args.from} does not exist. specify a different "from" stream.`)
-            const from = db.get(args.from)
-            const to = db.get(args.to)
-
-            // could be time optimized to avoid the sort
-            let result = from.values.concat(to.values)
-            result = result.sort((a, b) => a[0] - b[0])
-            db.put(args.to, { ...to, values: result })
-            db.del(args.from)
-            console.log(`merged stream ${args.from} into stream ${args.to}.`)
-          }
-        })
-        .command({
-          command: 'show <stream>',
-          description: 'display memories',
-          builder: yargs => {
-            return yargs
-              .positional('stream', { describe: 'the id of the stream you wish to recall', type: 'string' })
-              // TODO: Implement timeline format
-              .option('format', { describe: 'the format of the output', choices: ['csv', 'table', 'chart', 'graph', 'json', 'timeline'], default: 'csv' })
-              .option('time-format', { describe: 'the format of timestamps in the output', choices: ['unix', 'relative', 'date'], default: 'relative' })
-          },
-          handler: args => {
-            const stream = db.get(args.stream)
-            if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
-
-            if (args.format === 'csv') {
-              for(let i = 0; i < stream.values.length; i++) {
-                console.log(`${i}, ${formatTime(stream.values[i][0], args.timeFormat)}, ${stream.values[i][1]}`)
-              }
-            } else if (args.format === 'chart') {
-              console.log(chart(stream.values.map((value) => value[1]), {
-                width: generateDimension(args.width, 'width'),
-                height: generateDimension(args.height, 'height'),
-                dense: true
-              }))
-            } else if (args.format === 'graph') {
-              console.log(sparkly(stream.values.map((value) => value[1]), { minimum: 0 }))
-            } else if (args.format === 'table') {
-              const table = new AsciiTable(formatStreamName(stream))
-              table.setHeading('index', 'time', 'value')
-              table.addRowMatrix(stream.values.map((value, index) => [index, formatTime(value[0], args.timeFormat), value[1]]))
-              console.log(table.toString())
-            } else if (args.format === 'json') {
-              console.log(JSON.stringify({ ...stream, values: stream.values.map((value, index) => [index, ...value]) }, null, 2))
-            } else {
-              throw Error(`format ${args.format} not implemented yet.`)
-            }
-          }
-        })
-        .command({
-          command: 'update <stream>',
-          description: 'update a stream',
-          builder: yargs => {
-            return yargs
-              .option('name', { alias: 'n' })
-          },
-          handler: args => {
-            const stream = db.get(args.stream)
-            if (stream === undefined) throw Error(`stream ${args.stream} does not exist.`)
-            if (args.name) { db.put(args.stream, {... stream, name: args.name }) }
-            console.log(`updated stream ${formatStreamName(stream)}.`)
-          }
-        })
-        .command({
-          command: 'dashboard',
-          description: 'show an overview of streams',
-          builder: yargs => {
-            return yargs
-          },
-          handler: async (args) => {
-            const streamNames = db.keys()
-            let streams = streamNames.map((streamName) => {
-              return db.get(streamName)
-            })
-            streams = streams.sort((a, b) => (a.id).localeCompare(b.id));
-            const chartsPerRow = 4
-            const rowCount = Math.ceil(streams.length / chartsPerRow)
-            const charts = []
-            const width = Math.floor(windowSize.width / chartsPerRow)
-            const height = Math.floor((windowSize.height - 1) / rowCount)
-            const chartArgs = {
-              width: width,
-              height: height,
-              dense: true
-            }
-
-            for (let i = 0; i < streams.length; i++) {
-              let temp = chart(streams[i].values.map((value) => value[1]), chartArgs)
-              let tempArr = temp.split('\n')
-              tempArr = tempArr.map((line, lineIndex) => {
-                if (lineIndex === height - 4) {
-                  return `      ${formatStreamName(streams[i])}`.slice(0, width).padEnd(width, ' ')
-                } else {
-                  return line.slice(0, width).padEnd(width, ' ')
-                }
+              .positional('stream', { describe: 'name of the stream to delete', type: 'string' })
+              .option('yes', {
+                alias: 'y',
+                describe: 'confirm deletion',
+                type: 'boolean',
+                default: false
               })
-              charts.push(tempArr)
-            }
-
-            for (let metaRow = 0; metaRow < rowCount; metaRow++) {
-              for (let literalRow = 0; literalRow < height - 2; literalRow++) {
-                let row = ''
-                for(let column = 0; column < chartsPerRow; column++) {
-                  if (metaRow * chartsPerRow + column < streams.length) {
-                    row += charts[metaRow * chartsPerRow + column][literalRow]
-                  }
-                }
-                console.log(row)
-              }
-            }
-          }
-        })
-        .demandCommand()
-        .help()
-    },
-    handler: args => {
-    }
-  })
-  .command({
-    command: 'db',
-    description: 'manage the database',
-    builder: yargs => {
-      return yargs
-        .command({
-          command: 'merge <from> <to>',
-          description: 'merge two databases together, deleting the "from" database. if the "to" database does not exist, this will effectively rename "from". each entry in each stream of the "from" database will be copied to the same stream in the "to" database, given that there does not already exist a note with that timestamp in that stream of the "to" database.',
-          builder: yargs => {
-            return yargs
           },
           handler: async (args) => {
-            let from, to
             try {
-              await stat(path.resolve(args.from))
-              from = flatfile.sync(path.resolve(args.from))
-            } catch (e) {
-              throw new Error(`error reading "from" database at "${args.from}":\n${e}`)
-            }
-
-            try {
-              await stat(path.resolve(args.from))
-              to = flatfile.sync(path.resolve(args.to))
-            } catch (e) {
-              throw new Error(`error reading "to" database at "${args.from}":\n${e}`)
-            }
-
-
-
-            let fromStreams = from.keys()
-            for(let i = 0; i < fromStreams.length; i++) {
-              if (!to.has(fromStreams[i])) {
-                to.put(fromStreams[i], { id: fromStreams[i], ...defaultStream })
-                console.log(`stream ${fromStreams[i]} does not exist; creating it now.`)
+              if (!args.yes) {
+                console.error('Error: Deletion requires confirmation. Use --yes or -y flag.')
+                process.exit(1)
               }
 
-              let fromValues = from.get(fromStreams[i]).values
-              let toValues = from.get(fromStreams[i]).values
-              let updates = []
-
-              for (let i = 0; i < fromValues.length; i++) {
-                let match = toValues.filter((note) => note[0] === fromValues[i][0])
-                if (!match) {
-                  // console.log(`Did not find match for value ${i} at timestamp ${match[0]}`)
-                  updates.push(fromValues[i])
-                }
-              }
-              if (updates.length) {
-                let existing = db.get(fromStreams[i])
-                existing.values = [...existing.values, ...updates].sort((a, b) => a[0] - b[0])
-                db.put(fromStreams[i], existing)
-                console.log(`Made updates to stream ${fromStreams[i]}`)
-              }
+              await deleteStream(args.stream)
+              console.log(`Deleted stream "${args.stream}".`)
+            } catch (err) {
+              console.error(`Error: ${err.message}`)
+              process.exit(1)
             }
-
-            await rm(path.resolve(args.from))
-            console.log(`merged database ${args.from} into database ${args.to}.`)
           }
         })
         .demandCommand()
         .help()
     },
-    handler: args => {
-    }
+    handler: () => {}
   })
   .demandCommand()
   .help()

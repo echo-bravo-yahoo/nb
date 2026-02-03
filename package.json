@@ -1,28 +1,21 @@
 {
   "name": "nb",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "nota bene: a tool for recording trends",
   "main": "nb.js",
   "type": "module",
-  "scripts": {
-    "server": "node server.js"
-  },
+  "scripts": {},
   "bin": {
     "nb": "nb.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "ascii-table": "^0.0.9",
-    "chart": "github:Trial-In-Error/chart",
+    "@influxdata/influxdb-client": "^1.35.0",
     "chrono-node": "^2.3.8",
-    "flat-file-db": "^1.0.0",
     "javascript-time-ago": "^2.3.13",
     "parse-relative-time": "^1.1.0",
-    "server": "^1.0.37",
-    "sparkly": "^6.0.0",
     "update-notifier": "^5.1.0",
-    "window-size": "^1.1.1",
     "yargs": "^17.3.1"
   },
   "engines": {

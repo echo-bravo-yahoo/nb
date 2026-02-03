@@ -1,4 +1,3 @@
-// node.js imports
 import { readFile } from 'fs/promises'
 
 // time helpers
@@ -9,13 +8,6 @@ const timeAgo = new TimeAgo('en-US')
 import chrono from 'chrono-node'
 import prt from 'parse-relative-time'
 const parseRelativeTime = prt.default
-
-// TUI helpers
-import { default as windowSize } from 'window-size'
-
-export const defaultStream = {
-  values: []
-}
 
 export function parseTimestamp(timestamp) {
   // chrono takes natural language, eg, 5 days ago, this Friday at 13:00, etc.
@@ -36,22 +28,6 @@ export function parseTimestamp(timestamp) {
   }
 }
 
-export function formatStreamName(stream) {
-  if (stream.name) {
-    return `${stream.name} (${stream.id})`
-  } else {
-    return stream.id
-  }
-}
-
-export function indexOrNot(indexOrTimestamp) {
-  if (indexOrTimestamp <= 10000) {
-    return true
-  } else {
-    return false
-  }
-}
-
 export function formatTime(timestamp, formatOption) {
   if (formatOption === 'unix') {
     return timestamp
@@ -61,18 +37,3 @@ export function formatTime(timestamp, formatOption) {
     return new Intl.DateTimeFormat('en-US').format(timestamp)
   }
 }
-
-export function generateDimension(argDimension, dimensionName) {
-  let current = windowSize[dimensionName]
-  // height defaults to 1 less so you can see the command you ran
-  let dimension = dimensionName === 'width' ? current : current - 1
-  if (argDimension) {
-    if (typeof argDimension === "string" && argDimension.includes('%')) {
-      dimension = Math.ceil(current * (Number(argDimension.split('%')[0]) / 100))
-    } else {
-      dimension = Number(argDimension)
-    }
-  }
-  return dimension
-}
-
