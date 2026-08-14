@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(node nb.js note:*)",
-      "Bash(node nb.js stream create:*)",
-      "Bash(node:*)"
-    ]
-  }
-}
