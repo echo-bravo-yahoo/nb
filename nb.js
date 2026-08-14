@@ -11,10 +11,12 @@ const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url)
 
 // Local modules
 import { parseTimestamp } from './helpers.js'
-import { getStream, createStream, deleteStream, listStreams, formatTagDef } from './lib/streams.js'
+import { getStream, createStream, deleteStream, listStreams, formatTagDef, formatFieldsDef } from './lib/streams.js'
 import { writePoint, closeWriteApi } from './lib/influx.js'
 import {
   parseTagDefinition,
+  parseFieldDefinition,
+  parseMultiFieldValue,
   validateProvidedTags,
   validateValueType,
   coerceValue
@@ -58,9 +60,6 @@ yargs(hideBin(process.argv))
         // Validate provided tags against stream definition
         const validatedTags = validateProvidedTags(args, stream.tags)
 
-        // Coerce value to stream's type
-        const typedValue = coerceValue(args.value, stream.type)
-
         // Parse timestamp
         const timestamp = args.time ? parseTimestamp(args.time) : Date.now()
 
@@ -75,20 +74,30 @@ yargs(hideBin(process.argv))
         }
 
         // Write to InfluxDB
-        await writePoint({
-          measurement: stream.measure,
-          tags: influxTags,
-          value: typedValue,
-          type: stream.type,
-          timestamp
-        })
+        if (stream.fields) {
+          // Multi-field stream: parse "key:val,key:val,..." value
+          const fieldValues = parseMultiFieldValue(args.value, stream.fields)
+          const fields = stream.fields
+            .filter(fd => fd.name in fieldValues)
+            .map(fd => ({ name: fd.name, type: fd.type, value: fieldValues[fd.name] }))
+          await writePoint({ measurement: stream.measure, tags: influxTags, fields, timestamp })
+        } else {
+          const typedValue = coerceValue(args.value, stream.type)
+          await writePoint({
+            measurement: stream.measure,
+            tags: influxTags,
+            value: typedValue,
+            type: stream.type,
+            timestamp
+          })
+        }
 
         await closeWriteApi()
 
         if (args.time) {
-          console.log(`Noted ${typedValue} in stream "${args.stream}" at ${args.time}.`)
+          console.log(`Noted ${args.value} in stream "${args.stream}" at ${args.time}.`)
         } else {
-          console.log(`Noted ${typedValue} in stream "${args.stream}".`)
+          console.log(`Noted ${args.value} in stream "${args.stream}".`)
         }
       } catch (err) {
         console.error(`Error: ${err.message}`)
@@ -118,7 +127,10 @@ yargs(hideBin(process.argv))
                 const tagsStr = stream.tags.length > 0
                   ? `[${stream.tags.map(formatTagDef).join(', ')}]`
                   : '[]'
-                console.log(`${stream.name} (${stream.type}) ${tagsStr} -> measurement: ${stream.measure}`)
+                const typeStr = stream.fields
+                  ? `{${formatFieldsDef(stream.fields)}}`
+                  : stream.type
+                console.log(`${stream.name} (${typeStr}) ${tagsStr} -> measurement: ${stream.measure}`)
               }
             } catch (err) {
               console.error(`Error: ${err.message}`)
@@ -146,30 +158,40 @@ yargs(hideBin(process.argv))
                 default: []
               })
               .option('type', {
-                describe: 'value type for the measurement',
+                describe: 'value type for the measurement (ignored when --fields is used)',
                 type: 'string',
                 choices: ['float', 'integer', 'string', 'boolean'],
                 default: 'float'
               })
+              .option('fields', {
+                describe: 'multi-field definitions: "name:type,name?:type,..." (? = optional)',
+                type: 'string'
+              })
           },
           handler: async (args) => {
             try {
-              validateValueType(args.type)
-
-              // Parse tag definitions
               const tags = args.tag.map(parseTagDefinition)
+
+              let fields = null
+              if (args.fields) {
+                fields = args.fields.split(',').map(parseFieldDefinition)
+              } else {
+                validateValueType(args.type)
+              }
 
               await createStream({
                 name: args.name,
                 measure: args.measure,
                 tags,
-                type: args.type
+                type: args.type,
+                fields
               })
 
               const tagsStr = tags.length > 0
                 ? `[${tags.map(formatTagDef).join(', ')}]`
                 : '[]'
-              console.log(`Created stream "${args.name}" (${args.type}) ${tagsStr} -> measurement: ${args.measure}`)
+              const typeStr = fields ? `{${formatFieldsDef(fields)}}` : args.type
+              console.log(`Created stream "${args.name}" (${typeStr}) ${tagsStr} -> measurement: ${args.measure}`)
             } catch (err) {
               console.error(`Error: ${err.message}`)
               process.exit(1)
