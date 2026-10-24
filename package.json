@@ -5,7 +5,10 @@
   "main": "nb.js",
   "type": "module",
   "scripts": {
-    "test": "node --test test/note.test.js"
+    "server": "node server.js",
+    "test": "node --test test/*.test.js",
+    "vendor": "scripts/vendor-feathers.sh",
+    "deploy": "scripts/deploy.sh"
   },
   "bin": {
     "nb": "nb.js"
