@@ -12,15 +12,9 @@ const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url)
 // Local modules
 import { parseTimestamp } from './helpers.js'
 import { getStream, createStream, deleteStream, listStreams, formatTagDef, formatFieldsDef } from './lib/streams.js'
-import { writePoint, closeWriteApi } from './lib/influx.js'
-import {
-  parseTagDefinition,
-  parseFieldDefinition,
-  parseMultiFieldValue,
-  validateProvidedTags,
-  validateValueType,
-  coerceValue
-} from './lib/validation.js'
+import { writePoint } from './lib/influx.js'
+import { buildPoint } from './lib/note.js'
+import { parseTagDefinition, parseFieldDefinition, validateValueType } from './lib/validation.js'
 
 updateNotifier({ pkg }).notify()
 
@@ -57,42 +51,8 @@ yargs(hideBin(process.argv))
           process.exit(1)
         }
 
-        // Validate provided tags against stream definition
-        const validatedTags = validateProvidedTags(args, stream.tags)
-
-        // Parse timestamp
         const timestamp = args.time ? parseTimestamp(args.time) : Date.now()
-
-        // Convert validated tags for InfluxDB (stringify arrays and numbers for tags)
-        const influxTags = {}
-        for (const [key, val] of Object.entries(validatedTags)) {
-          if (Array.isArray(val)) {
-            influxTags[key] = JSON.stringify(val)
-          } else {
-            influxTags[key] = String(val)
-          }
-        }
-
-        // Write to InfluxDB
-        if (stream.fields) {
-          // Multi-field stream: parse "key:val,key:val,..." value
-          const fieldValues = parseMultiFieldValue(args.value, stream.fields)
-          const fields = stream.fields
-            .filter(fd => fd.name in fieldValues)
-            .map(fd => ({ name: fd.name, type: fd.type, value: fieldValues[fd.name] }))
-          await writePoint({ measurement: stream.measure, tags: influxTags, fields, timestamp })
-        } else {
-          const typedValue = coerceValue(args.value, stream.type)
-          await writePoint({
-            measurement: stream.measure,
-            tags: influxTags,
-            value: typedValue,
-            type: stream.type,
-            timestamp
-          })
-        }
-
-        await closeWriteApi()
+        await writePoint(buildPoint(stream, { value: args.value, tags: args, timestamp }))
 
         if (args.time) {
           console.log(`Noted ${args.value} in stream "${args.stream}" at ${args.time}.`)

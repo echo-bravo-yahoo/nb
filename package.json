@@ -4,7 +4,9 @@
   "description": "nota bene: a tool for recording trends",
   "main": "nb.js",
   "type": "module",
-  "scripts": {},
+  "scripts": {
+    "test": "node --test test/note.test.js"
+  },
   "bin": {
     "nb": "nb.js"
   },
