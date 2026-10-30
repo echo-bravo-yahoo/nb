@@ -16,7 +16,7 @@ npm run deploy      # test, then ship the server to stockholm
 
 ## Web form
 
-The form (`web/index.html`, `web/app.js`) uses feathers primitives only and has no stylesheet of its own beyond the page column. feathers is built from the private `~/workspace/plumage` repo, so `scripts/vendor-feathers.sh` copies its `dist/feathers.css` and fonts into the gitignored `web/vendor/feathers/` instead of committing them.
+The form (`web/index.html`, `web/app.js`) uses feathers primitives only and has no stylesheet of its own beyond the page column. feathers is built from the private `~/workspace/feathers` repo, so `scripts/vendor-feathers.sh` copies its `dist/feathers.css` and fonts into the gitignored `web/vendor/feathers/` instead of committing them.
 
 `lib/note.js` (`buildPoint`) is the one path from input to InfluxDB point for both the CLI and the server. It stores an event as `value=1` beside the stream's event fields, which take a default from the field's `default` or from its per-tag `defaults`. `lib/web.js` takes its dependencies as arguments, so `test/web.test.js` runs it against fakes.
 
