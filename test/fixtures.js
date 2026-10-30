@@ -16,3 +16,30 @@ export const bp = {
     { name: 'pulse', type: 'integer', optional: true }
   ]
 }
+
+export const habit = {
+  name: 'habit',
+  measure: 'habit',
+  type: 'event',
+  tags: [{ name: 'item', type: 'enum', enumValues: ['oats', 'metamucil', 'sterols', 'nuts'] }],
+  fields: [
+    { name: 'dose_g', type: 'float', optional: true, defaults: { item: { metamucil: 10 } } }
+  ]
+}
+
+export const eczema = {
+  name: 'eczema',
+  measure: 'eczema',
+  type: 'event',
+  tags: []
+}
+
+export const demiMed = {
+  name: 'demi_med',
+  measure: 'demi_med',
+  type: 'event',
+  tags: [],
+  fields: [
+    { name: 'dose_ml', type: 'float', optional: false, default: 0.2 }
+  ]
+}

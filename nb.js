@@ -11,20 +11,20 @@ const pkg = JSON.parse(await readFile(new URL('./package.json', import.meta.url)
 
 // Local modules
 import { parseTimestamp } from './helpers.js'
-import { getStream, createStream, deleteStream, listStreams, formatTagDef, formatFieldsDef } from './lib/streams.js'
+import { getStream, createStream, deleteStream, listStreams, formatTagDef, formatStreamType } from './lib/streams.js'
 import { writePoint } from './lib/influx.js'
 import { buildPoint } from './lib/note.js'
-import { parseTagDefinition, parseFieldDefinition, validateValueType } from './lib/validation.js'
+import { parseTagDefinition, parseFieldDefinition, validateStreamType, STREAM_TYPES } from './lib/validation.js'
 
 updateNotifier({ pkg }).notify()
 
 yargs(hideBin(process.argv))
   .command({
-    command: 'note <value>',
+    command: 'note [value]',
     description: 'record something worth remembering',
     builder: yargs => {
       return yargs
-        .positional('value', { describe: 'the value to record', type: 'string' })
+        .positional('value', { describe: 'the value to record; omit it for an event stream, or give event fields as name:value', type: 'string' })
         .option('stream', {
           alias: 's',
           describe: 'the stream to write to',
@@ -54,10 +54,11 @@ yargs(hideBin(process.argv))
         const timestamp = args.time ? parseTimestamp(args.time) : Date.now()
         await writePoint(buildPoint(stream, { value: args.value, tags: args, timestamp }))
 
+        const noted = args.value ?? 'an event'
         if (args.time) {
-          console.log(`Noted ${args.value} in stream "${args.stream}" at ${args.time}.`)
+          console.log(`Noted ${noted} in stream "${args.stream}" at ${args.time}.`)
         } else {
-          console.log(`Noted ${args.value} in stream "${args.stream}".`)
+          console.log(`Noted ${noted} in stream "${args.stream}".`)
         }
       } catch (err) {
         console.error(`Error: ${err.message}`)
@@ -87,10 +88,7 @@ yargs(hideBin(process.argv))
                 const tagsStr = stream.tags.length > 0
                   ? `[${stream.tags.map(formatTagDef).join(', ')}]`
                   : '[]'
-                const typeStr = stream.fields
-                  ? `{${formatFieldsDef(stream.fields)}}`
-                  : stream.type
-                console.log(`${stream.name} (${typeStr}) ${tagsStr} -> measurement: ${stream.measure}`)
+                console.log(`${stream.name} (${formatStreamType(stream)}) ${tagsStr} -> measurement: ${stream.measure}`)
               }
             } catch (err) {
               console.error(`Error: ${err.message}`)
@@ -118,13 +116,13 @@ yargs(hideBin(process.argv))
                 default: []
               })
               .option('type', {
-                describe: 'value type for the measurement (ignored when --fields is used)',
+                describe: 'value type for the measurement, or "event" for a stream that records only that something happened (ignored when --fields is used, unless it is event)',
                 type: 'string',
-                choices: ['float', 'integer', 'string', 'boolean'],
+                choices: STREAM_TYPES,
                 default: 'float'
               })
               .option('fields', {
-                describe: 'multi-field definitions: "name:type,name?:type,..." (? = optional)',
+                describe: 'multi-field definitions: "name:type[=default],name?:type,..." (? = optional); with --type event they are recorded beside the event',
                 type: 'string'
               })
           },
@@ -136,10 +134,10 @@ yargs(hideBin(process.argv))
               if (args.fields) {
                 fields = args.fields.split(',').map(parseFieldDefinition)
               } else {
-                validateValueType(args.type)
+                validateStreamType(args.type)
               }
 
-              await createStream({
+              const stream = await createStream({
                 name: args.name,
                 measure: args.measure,
                 tags,
@@ -150,8 +148,7 @@ yargs(hideBin(process.argv))
               const tagsStr = tags.length > 0
                 ? `[${tags.map(formatTagDef).join(', ')}]`
                 : '[]'
-              const typeStr = fields ? `{${formatFieldsDef(fields)}}` : args.type
-              console.log(`Created stream "${args.name}" (${typeStr}) ${tagsStr} -> measurement: ${args.measure}`)
+              console.log(`Created stream "${args.name}" (${formatStreamType(stream)}) ${tagsStr} -> measurement: ${args.measure}`)
             } catch (err) {
               console.error(`Error: ${err.message}`)
               process.exit(1)

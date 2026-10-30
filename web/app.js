@@ -101,15 +101,16 @@ function tagField(def, saved) {
   }
 }
 
-function valueField(label, type, optional = false) {
-  const attrs = { required: !optional, placeholder: optional ? 'optional' : undefined }
+function valueField(label, type, optional = false, defaultValue) {
+  const placeholder = defaultValue !== undefined ? `default ${defaultValue}` : optional ? 'optional' : undefined
+  const attrs = { required: !optional, placeholder }
   switch (type) {
     case 'float':
       return inputField(label, { type: 'number', step: 'any', inputmode: 'decimal', ...attrs })
     case 'integer':
       return inputField(label, { type: 'number', step: '1', inputmode: 'numeric', ...attrs })
     case 'boolean':
-      return segmentedField(label, ['true', 'false'])
+      return segmentedField(label, ['true', 'false'], String(defaultValue))
     default:
       return inputField(label, { type: 'text', ...attrs })
   }
@@ -131,14 +132,19 @@ function renderStream() {
   const stream = currentStream()
   const saved = last.tags[stream.name] ?? {}
   tagFields = stream.tags.map(def => [def.name, tagField(def, saved[def.name])])
+  // A blank input means the field's default, which the server applies.
   valueFields = stream.fields
-    ? stream.fields.map(fd => [fd.name, valueField(capitalize(fd.name), fd.type, fd.optional)])
-    : [[null, valueField('Value', stream.type)]]
+    ? stream.fields.map(fd => [
+        fd.name,
+        valueField(capitalize(fd.name), fd.type, fd.optional || fd.default !== undefined, fd.default)
+      ])
+    : stream.type === 'event' ? [] : [[null, valueField('Value', stream.type)]]
   streamSection.replaceChildren(...[...tagFields, ...valueFields].map(([, field]) => field.el))
 }
 
 function readNote(stream) {
   const tags = Object.fromEntries(tagFields.map(([name, field]) => [name, field.read()]))
+  if (stream.type === 'event' && !stream.fields) return { tags }
   if (!stream.fields) return { tags, value: valueFields[0][1].read() }
 
   const value = {}
@@ -209,7 +215,8 @@ form.addEventListener('submit', async event => {
     renderStream()
     resetTime()
     const at = new Date(data.timestamp).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-    showStatus('ok', `Noted ${describeValue(value)} in ${stream.name} at ${at}`)
+    const nothingGiven = value === undefined || (typeof value === 'object' && Object.keys(value).length === 0)
+    showStatus('ok', `Noted ${nothingGiven ? 'an event' : describeValue(value)} in ${stream.name} at ${at}`)
   } finally {
     recordButton.disabled = false
   }

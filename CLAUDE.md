@@ -1,6 +1,6 @@
 # nb
 
-nb records notes into InfluxDB. A note is one recorded event, such as a weight or a blood-pressure reading, and belongs to a stream defined in `~/.nbrc`. The `nb` CLI and a LAN-only web form both write notes. See `~/.claude/docs/nb.md` for streams, config, and token handling.
+nb records notes into InfluxDB. A note is one recorded reading or event, such as a weight, a blood-pressure reading or a dose taken, and belongs to a stream defined in `~/.nbrc`. An `event` stream records only that something happened, plus any event fields it declares, such as a dose. The `nb` CLI and a LAN-only web form both write notes. See `~/.claude/docs/nb.md` for streams, config, and token handling.
 
 ## Build, test, run
 
@@ -18,7 +18,7 @@ npm run deploy      # test, then ship the server to stockholm
 
 The form (`web/index.html`, `web/app.js`) uses feathers primitives only and has no stylesheet of its own beyond the page column. feathers is built from the private `~/workspace/plumage` repo, so `scripts/vendor-feathers.sh` copies its `dist/feathers.css` and fonts into the gitignored `web/vendor/feathers/` instead of committing them.
 
-`lib/note.js` (`buildPoint`) is the one path from input to InfluxDB point for both the CLI and the server. `lib/web.js` takes its dependencies as arguments, so `test/web.test.js` runs it against fakes.
+`lib/note.js` (`buildPoint`) is the one path from input to InfluxDB point for both the CLI and the server. It stores an event as `value=1` beside the stream's event fields, which take a default from the field's `default` or from its per-tag `defaults`. `lib/web.js` takes its dependencies as arguments, so `test/web.test.js` runs it against fakes.
 
 ## Deployment
 

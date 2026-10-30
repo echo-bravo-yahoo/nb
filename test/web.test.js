@@ -3,10 +3,10 @@ import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 
 import { createServer } from '../lib/web.js'
-import { weight, bp } from './fixtures.js'
+import { weight, bp, habit, eczema, demiMed } from './fixtures.js'
 
 const webRoot = fileURLToPath(new URL('../web', import.meta.url))
-const streams = { weight, bp }
+const streams = { weight, bp, habit, eczema, demi_med: demiMed }
 
 async function start(writePoint) {
   const server = createServer({
@@ -50,7 +50,7 @@ test('GET / serves the form', async () => {
 test('GET /api/streams lists the streams', async () => {
   const res = await fetch(`${base}/api/streams`)
   assert.equal(res.status, 200)
-  assert.deepEqual(await res.json(), [weight, bp])
+  assert.deepEqual(await res.json(), Object.values(streams))
 })
 
 test('POST /api/notes writes the point', async () => {
@@ -70,6 +70,31 @@ test('POST /api/notes without a time uses the server clock', async () => {
   assert.ok(Math.abs(written[0].timestamp - Date.now()) < 1000)
 })
 
+const ONE = { name: 'value', type: 'integer', value: 1 }
+
+test('POST /api/notes writes an event as value=1', async () => {
+  const res = await postNote(base, { stream: 'eczema' })
+  assert.equal(res.status, 201)
+  assert.deepEqual(written.map(point => point.fields), [[ONE]])
+})
+
+test('POST /api/notes writes the default of an event field', async () => {
+  await postNote(base, { stream: 'habit', tags: { item: 'metamucil' } })
+  await postNote(base, { stream: 'habit', tags: { item: 'oats' } })
+  await postNote(base, { stream: 'demi_med' })
+  assert.deepEqual(written.map(point => point.fields), [
+    [ONE, { name: 'dose_g', type: 'float', value: 10 }],
+    [ONE],
+    [ONE, { name: 'dose_ml', type: 'float', value: 0.2 }]
+  ])
+})
+
+test('POST /api/notes writes an overridden event field', async () => {
+  const res = await postNote(base, { stream: 'demi_med', value: { dose_ml: '0.3' } })
+  assert.equal(res.status, 201)
+  assert.deepEqual(written.map(point => point.fields), [[ONE, { name: 'dose_ml', type: 'float', value: 0.3 }]])
+})
+
 test('POST /api/notes rejects a body that is not JSON', async () => {
   const res = await postNote(base, 'x', 'text/plain')
   assert.equal(res.status, 415)
@@ -79,7 +104,8 @@ test('POST /api/notes rejects a body that is not JSON', async () => {
 for (const [name, body] of [
   ['an unknown stream', { stream: 'nope', value: '1' }],
   ['a bad enum value', { stream: 'weight', value: '1', tags: { person: 'bob' } }],
-  ['an unparseable time', { stream: 'weight', value: '1', tags: { person: 'little' }, time: 'garbage' }]
+  ['an unparseable time', { stream: 'weight', value: '1', tags: { person: 'little' }, time: 'garbage' }],
+  ['a value on an event stream', { stream: 'eczema', value: '1' }]
 ]) {
   test(`POST /api/notes returns 400 for ${name}`, async () => {
     const res = await postNote(base, body)
